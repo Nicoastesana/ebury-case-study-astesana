@@ -1,0 +1,40 @@
+version: 2
+
+models:
+  - name: dim_customers
+    description: "Customer dimension table"
+    columns:
+      - name: customer_id
+        description: "Unique customer identifier"
+        tests:
+          - unique
+          - not_null
+      - name: first_transaction_date
+        description: "Date of first transaction"
+      - name: last_transaction_date
+        description: "Date of last transaction"
+      - name: total_transactions
+        description: "Total number of transactions"
+        tests:
+          - not_null
+
+  - name: fact_transactions
+    description: "Transaction fact table"
+    columns:
+      - name: transaction_id
+        description: "Unique transaction identifier"
+        tests:
+          - unique
+          - not_null
+      - name: customer_id
+        description: "Customer identifier"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_customers')
+              field: customer_id
+      - name: amount
+        description: "Transaction amount"
+        tests:
+          - not_null
+

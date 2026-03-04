@@ -1,0 +1,29 @@
+version: 2
+
+sources:
+  - name: staging
+    description: "Staging area for raw ingested data"
+    database: ebury_dwh
+    schema: staging
+    tables:
+      - name: customer_transactions
+        description: "Raw customer transaction data from CSV"
+        columns:
+          - name: transaction_id
+            description: "Unique transaction identifier"
+            tests:
+              - unique
+              - not_null
+          - name: customer_id
+            description: "Customer identifier"
+            tests:
+              - not_null
+          - name: transaction_date
+            description: "Date of the transaction"
+            tests:
+              - not_null
+          - name: amount
+            description: "Transaction amount"
+            tests:
+              - not_null
+

@@ -1,0 +1,14 @@
+ebury_transform:
+  outputs:
+    dev:
+      type: postgres
+      host: postgres
+      port: 5432
+      user: airflow
+      password: airflow
+      dbname: ebury_dwh
+      schema: analytics
+      threads: 4
+      keepalives_idle: 0
+  target: dev
+

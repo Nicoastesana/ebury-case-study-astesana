@@ -1,0 +1,6 @@
+apache-airflow-providers-postgres==5.10.0
+dbt-core==1.7.7
+dbt-postgres==1.7.7
+pandas==2.2.0
+psycopg2-binary==2.9.9
+
