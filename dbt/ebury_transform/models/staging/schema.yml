@@ -1,0 +1,62 @@
+version: 2
+
+models:
+  - name: stg_customer_transactions
+    description: >
+      Cleaned and type-cast version of raw.customer_transactions.
+      All data quality issues are resolved here before promotion to the
+      analytics layer. Rows that cannot meet the minimum quality bar are
+      retained but flagged with is_valid = FALSE.
+
+      Data quality fixes applied:
+        - transaction_id: strip 'T' prefix → cast to INTEGER
+        - customer_id: strip float suffix (e.g. '501.0') → cast to INTEGER
+        - transaction_date: normalise DD-MM-YYYY → DATE; invalid values → NULL
+        - product_id: strip 'P' prefix → cast to INTEGER
+        - quantity: non-numeric values → NULL; cast to INTEGER
+        - price: non-numeric values → NULL; cast to NUMERIC
+        - tax: non-numeric values → NULL; cast to NUMERIC
+    columns:
+      - name: transaction_id
+        description: "Unique transaction identifier — NULL if source value was unparseable"
+        data_type: integer
+
+      - name: customer_id
+        description: "Unique customer identifier — NULL if source value was unparseable"
+        data_type: integer
+
+      - name: transaction_date
+        description: "Date of the transaction, normalised to YYYY-MM-DD — NULL if source format was invalid"
+        data_type: date
+
+      - name: product_id
+        description: "Unique product identifier — NULL if source value was unparseable"
+        data_type: integer
+
+      - name: product_name
+        description: "Name of the product as provided in the source CSV"
+        data_type: character varying
+
+      - name: quantity
+        description: "Number of units sold — NULL if source value was non-numeric"
+        data_type: integer
+
+      - name: price
+        description: "Unit price of the product — NULL if source value was non-numeric (e.g. 'Two Hundred')"
+        data_type: numeric
+
+      - name: tax
+        description: "Tax amount applied to the transaction — NULL if source value was non-numeric (e.g. 'Fifteen')"
+        data_type: numeric
+
+      - name: loaded_at
+        description: "Timestamp when the row was originally loaded into the raw layer"
+        data_type: timestamp
+
+      - name: is_valid
+        description: >
+          TRUE when transaction_id, customer_id, and transaction_date are all non-NULL after cleaning.
+          FALSE rows are excluded from the analytics layer but retained here for auditing.
+        data_type: boolean
+        tests:
+          - not_null

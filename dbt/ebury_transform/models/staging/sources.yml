@@ -9,20 +9,29 @@ sources:
         description: "All rows from the source CSV, including dirty/incomplete records"
         columns:
           - name: transaction_id
-            description: "Source transaction ID (may have 'T' prefix or be NULL)"
+            description: "Source transaction ID — expected INTEGER; raw stored as VARCHAR to absorb dirty values (e.g. 'T1001', NULL)"
+            data_type: varchar
           - name: customer_id
-            description: "Source customer ID (stored as float string e.g. '501.0', may be NULL)"
+            description: "Source customer ID — expected INTEGER; raw stored as VARCHAR (e.g. '501.0', NULL)"
+            data_type: varchar
           - name: transaction_date
-            description: "Transaction date — mixed formats: YYYY-MM-DD and DD-MM-YYYY"
+            description: "Transaction date — expected DATE; raw stored as VARCHAR with mixed formats (YYYY-MM-DD, DD-MM-YYYY)"
+            data_type: varchar
           - name: product_id
-            description: "Product ID (may have 'P' prefix e.g. 'P100')"
+            description: "Product ID — expected INTEGER; raw stored as VARCHAR (e.g. 'P100')"
+            data_type: varchar
           - name: product_name
             description: "Product name"
+            data_type: varchar
           - name: quantity
-            description: "Units purchased (may be NULL or non-numeric)"
+            description: "Units purchased — expected INTEGER; raw stored as VARCHAR (may be NULL or non-numeric)"
+            data_type: varchar
           - name: price
-            description: "Unit price (may be non-numeric e.g. 'Two Hundred')"
+            description: "Unit price — expected NUMERIC; raw stored as VARCHAR (may be non-numeric e.g. 'Two Hundred')"
+            data_type: varchar
           - name: tax
-            description: "Tax amount (may be non-numeric e.g. 'Fifteen')"
+            description: "Tax amount — expected NUMERIC; raw stored as VARCHAR (may be non-numeric e.g. 'Fifteen')"
+            data_type: varchar
           - name: loaded_at
             description: "Timestamp when the row was loaded into the raw layer"
+            data_type: timestamp

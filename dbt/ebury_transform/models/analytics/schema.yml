@@ -47,13 +47,15 @@ models:
       All measures are cast and trustworthy.
     columns:
       - name: transaction_id
-        description: "Cleaned integer transaction identifier"
+        description: "Unique transaction identifier"
+        data_type: integer
         tests:
           - unique
           - not_null
 
       - name: customer_id
         description: "Foreign key to dim_customers"
+        data_type: integer
         tests:
           - not_null
           - relationships:
@@ -61,44 +63,52 @@ models:
               field: customer_id
 
       - name: product_id
-        description: "Cleaned integer product identifier"
+        description: "Unique product identifier"
+        data_type: integer
         tests:
           - not_null
 
       - name: product_name
         description: "Product name as provided in the source"
+        data_type: character varying
         tests:
           - not_null
           - accepted_values:
               values: ['Product A', 'Product B', 'Product C', 'Product D', 'Product E']
 
       - name: transaction_date
-        description: "Normalised transaction date (YYYY-MM-DD)"
+        description: "Date when the transaction occurred"
+        data_type: date
         tests:
           - not_null
 
       - name: quantity
-        description: "Units purchased (integer)"
+        description: "Number of units sold"
+        data_type: integer
         tests:
           - not_null
 
       - name: unit_price
-        description: "Price per unit (numeric)"
+        description: "Price of the product per unit"
+        data_type: numeric
         tests:
           - not_null
 
       - name: tax
-        description: "Tax amount for the transaction (numeric)"
+        description: "Tax applied to the transaction"
+        data_type: numeric
         tests:
           - not_null
 
       - name: gross_amount
-        description: "price × quantity (pre-tax)"
+        description: "unit_price × quantity — pre-tax revenue"
+        data_type: numeric
         tests:
           - not_null
 
       - name: total_amount
-        description: "gross_amount + tax"
+        description: "gross_amount + tax — total charged to customer"
+        data_type: numeric
         tests:
           - not_null
 
