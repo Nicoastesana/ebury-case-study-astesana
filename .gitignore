@@ -206,18 +206,48 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# Airflow
-logs/*
-!logs/.gitkeep
-plugins/*
-!plugins/.gitkeep
+# ─── Ebury Case Study ────────────────────────────────────────────────────────
 
-# Data files
-data/*
-!data/.gitkeep
+# Docker
+.env
+.env.*
+!.env.example
+
+# Airflow
+logs/
+logs/**
+!logs/.gitkeep
+airflow.db
+airflow-webserver.pid
+standalone_admin_password.txt
+webserver_config.py
 
 # dbt
 dbt/ebury_transform/target/
 dbt/ebury_transform/dbt_packages/
+dbt/ebury_transform/.dbt/
 dbt/ebury_transform/logs/
+
+# Data files (keep the placeholder, ignore actual data)
+data/**
+!data/.gitkeep
+
+# Editor / OS artefacts
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# JetBrains / IntelliJ (tracked selectively — ignore generated/local files)
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/usage.statistics.xml
+.idea/shelf/
+.idea/httpRequests/
+.idea/*.iml
+.idea/dataSources/
+.idea/dataSources.local.xml
+
+# AI assistant context (local only)
+.ai/
 
