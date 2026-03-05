@@ -56,21 +56,32 @@ ebury-case-study-astesana/
 
 ### Setup and Run
 
-1. **Start all services**:
+1. **Create and complete the environment file** (required before starting services):
+   ```bash
+   cp .env.example .env
+   ```
+   PowerShell alternative:
+   ```powershell
+   Copy-Item .env.example .env
+   ```
+   Then update `.env` with secure values (especially `POSTGRES_PASSWORD`, `_AIRFLOW_WWW_USER_PASSWORD`, and `AIRFLOW__CORE__FERNET_KEY`).
+
+2. **Start all services**:
    ```bash
    docker-compose up -d
    ```
+   Note: there is no standalone `dbt` container; `dbt run` and `dbt test` are executed by Airflow tasks inside the Airflow containers.
 
-2. **Wait for initialisation** (~2–3 minutes on first run):
+3. **Wait for initialisation** (~2–3 minutes on first run):
    ```bash
    docker-compose logs -f airflow-init
    ```
    Wait until you see `Database migrations complete`.
 
-3. **Open Airflow UI**: [http://localhost:8080](http://localhost:8080)
+4. **Open Airflow UI**: [http://localhost:8080](http://localhost:8080)
    - Username: `airflow` / Password: `airflow`
 
-4. **Configure the PostgreSQL connection** — go to **Admin → Connections** and add:
+5. **Configure the PostgreSQL connection** — go to **Admin → Connections** and add:
 
    | Field | Value |
    |---|---|
@@ -81,7 +92,7 @@ ebury-case-study-astesana/
    | Login / Password | `airflow` |
    | Port | `5432` |
 
-5. **Enable and trigger the DAG**: find `ebury_elt_pipeline`, toggle it **On**, then click **Trigger DAG**.
+6. **Enable and trigger the DAG**: find `ebury_elt_pipeline`, toggle it **On**, then click **Trigger DAG**.
 
 ### Stopping the Services
 
@@ -146,6 +157,9 @@ docker-compose logs
 
 # Check scheduler specifically
 docker-compose logs airflow-scheduler
+
+# Remove orphan containers after compose service changes
+docker-compose up -d --remove-orphans
 
 # Full reset
 docker-compose down -v && docker-compose up -d

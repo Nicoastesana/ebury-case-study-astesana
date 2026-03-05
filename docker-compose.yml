@@ -79,7 +79,7 @@ services:
     container_name: ebury_airflow_scheduler
     command: scheduler
     healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
       interval: 30s
       timeout: 10s
       retries: 5
@@ -104,6 +104,8 @@ services:
         exec /entrypoint airflow version
     environment:
       <<: *airflow-common-env
+      # airflow-init runs as root to fix permissions; skip startup pip install to avoid hard failure.
+      _PIP_ADDITIONAL_REQUIREMENTS: ""
       _AIRFLOW_DB_MIGRATE: 'true'
       _AIRFLOW_WWW_USER_CREATE: 'true'
       _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
@@ -113,24 +115,6 @@ services:
       - ./:/sources
     networks:
       - ebury-network
-
-  dbt:
-    image: ghcr.io/dbt-labs/dbt-postgres:1.7.latest
-    container_name: ebury_dbt
-    environment:
-      DBT_PROFILES_DIR: /usr/app/dbt
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - ./dbt/ebury_transform:/usr/app/dbt
-    depends_on:
-      - postgres
-    networks:
-      - ebury-network
-    command: ["--version"]
 
 volumes:
   postgres-db-volume:
