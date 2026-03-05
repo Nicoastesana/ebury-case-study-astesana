@@ -1,42 +1,46 @@
 """
-Ebury ELT Pipeline — Extract & Load
-=====================================
-Loads customer_transactions.csv into raw.customer_transactions using the
-most efficient PostgreSQL bulk-load pattern:
+Ebury ELT Pipeline
+==================
+Full ELT pipeline orchestrated by Airflow:
 
-  1. COPY FROM STDIN → temporary table (no constraints, maximum speed)
-  2. INSERT INTO raw ... SELECT FROM temp ON CONFLICT DO NOTHING (idempotent)
-  3. DROP temporary table
+  Task 1 — load_csv_to_raw
+    Streams customer_transactions.csv into PostgreSQL via COPY FROM STDIN.
+    Uses a temporary staging table for idempotency (ON CONFLICT DO NOTHING).
 
-Why this pattern?
------------------
-- COPY FROM STDIN streams the file directly into PostgreSQL with constant
-  memory usage regardless of file size — no intermediate list in RAM.
-- The temp table has no indexes or constraints, so COPY never fails on
-  duplicate transaction_ids (safe to re-run the DAG multiple times).
-- The final INSERT handles deduplication via ON CONFLICT DO NOTHING on the
-  partial unique index defined in 01_init.sql.
-- All data quality issues in the source file (malformed dates, non-numeric
-  prices, missing IDs, "T"-prefixed transaction IDs, etc.) are preserved
-  in the raw layer; cleaning is delegated to dbt staging models.
+  Task 2 — dbt_run
+    Runs all dbt models in dependency order:
+      raw → staging.stg_customer_transactions (view)
+           → analytics.dim_customers          (table)
+           → analytics.fact_transactions      (table)
+           → analytics.agg_by_customer        (table)
+           → analytics.agg_by_customer_product(table)
+           → analytics.agg_by_product         (table)
+           → auditing.audit_errors_by_*       (tables)
 
-Schedule: daily at midnight UTC.
+  Task 3 — dbt_test
+    Runs all dbt schema tests (unique, not_null, relationships,
+    accepted_values) against the materialised models.
+
+Dependencies:  load_csv_to_raw >> dbt_run >> dbt_test
+
+Retries: 2 attempts with 5-minute delay between them.
 """
 
 from __future__ import annotations
 
-import io
 import logging
 import os
 from datetime import datetime, timedelta
 
 import psycopg2
 from airflow import DAG
+from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 
 log = logging.getLogger(__name__)
 
 CSV_PATH = "/opt/airflow/data/customer_transactions.csv"
+DBT_PROJECT_DIR = "/opt/airflow/dbt/ebury_transform"
 
 RAW_COLUMNS = (
     "transaction_id",
@@ -49,50 +53,42 @@ RAW_COLUMNS = (
     "tax",
 )
 
+# ---------------------------------------------------------------------------
+# Default args — applied to every task
+# ---------------------------------------------------------------------------
 default_args = {
     "owner": "ebury",
-    "retries": 1,
+    "retries": 2,
     "retry_delay": timedelta(minutes=5),
+    "email_on_failure": False,   # set to True and configure SMTP for alerts
+    "email_on_retry": False,
 }
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Task 1: load CSV → raw.customer_transactions
 # ---------------------------------------------------------------------------
+def load_csv_to_raw(**_context) -> None:
+    """
+    Stream the CSV into PostgreSQL via COPY FROM STDIN.
 
-def _get_conn() -> psycopg2.extensions.connection:
-    return psycopg2.connect(
+    Pattern
+    -------
+    1. CREATE TEMP TABLE (no constraints)  → safe for COPY
+    2. COPY FROM STDIN                     → O(1) memory, maximum speed
+    3. INSERT INTO raw ON CONFLICT DO NOTHING → idempotent
+    """
+    conn = psycopg2.connect(
         host=os.environ["POSTGRES_HOST"],
         port=int(os.environ.get("POSTGRES_PORT", 5432)),
         dbname=os.environ["POSTGRES_DB"],
         user=os.environ["POSTGRES_USER"],
         password=os.environ["POSTGRES_PASSWORD"],
     )
-
-
-# ---------------------------------------------------------------------------
-# Task callable
-# ---------------------------------------------------------------------------
-
-def load_csv_to_raw(**_context) -> None:
-    """
-    Stream the CSV into PostgreSQL via COPY FROM STDIN.
-
-    Steps
-    -----
-    1. Create a session-scoped temporary table (identical schema to
-       raw.customer_transactions but with no indexes or constraints).
-    2. COPY the CSV file directly into the temp table — O(1) memory.
-    3. INSERT from the temp table into raw.customer_transactions with
-       ON CONFLICT DO NOTHING so re-runs are safe.
-    4. Log how many rows were inserted vs skipped as duplicates.
-    """
-    conn = _get_conn()
     try:
         with conn:
             with conn.cursor() as cur:
 
-                # -- 1. Temporary landing table (no constraints) ------------
                 cur.execute("""
                     CREATE TEMP TABLE tmp_customer_transactions (
                         transaction_id   VARCHAR(50),
@@ -106,7 +102,6 @@ def load_csv_to_raw(**_context) -> None:
                     ) ON COMMIT DROP
                 """)
 
-                # -- 2. COPY FROM STDIN — streams file, constant memory -----
                 columns = ", ".join(RAW_COLUMNS)
                 copy_sql = f"""
                     COPY tmp_customer_transactions ({columns})
@@ -120,24 +115,18 @@ def load_csv_to_raw(**_context) -> None:
                 total = cur.fetchone()[0]
                 log.info("COPY loaded %d rows into temp table", total)
 
-                # -- 3. Idempotent insert into raw layer --------------------
                 cur.execute(f"""
                     INSERT INTO raw.customer_transactions ({columns})
-                    SELECT {columns}
-                    FROM tmp_customer_transactions
+                    SELECT {columns} FROM tmp_customer_transactions
                     ON CONFLICT (transaction_id)
                     WHERE transaction_id IS NOT NULL
                     DO NOTHING
                 """)
-                inserted = cur.rowcount
-
-                skipped = total - inserted
                 log.info(
                     "Inserted %d rows into raw.customer_transactions "
                     "(%d skipped as duplicates)",
-                    inserted, skipped,
+                    cur.rowcount, total - cur.rowcount,
                 )
-
     finally:
         conn.close()
 
@@ -145,21 +134,61 @@ def load_csv_to_raw(**_context) -> None:
 # ---------------------------------------------------------------------------
 # DAG definition
 # ---------------------------------------------------------------------------
-
 with DAG(
     dag_id="ebury_elt_pipeline",
     default_args=default_args,
-    description=(
-        "ELT pipeline: stream customer_transactions CSV into the raw "
-        "PostgreSQL layer via COPY FROM STDIN + idempotent upsert"
-    ),
+    description="ELT: ingest CSV → raw PostgreSQL, then trigger dbt transformations",
     schedule_interval="@daily",
     start_date=datetime(2023, 7, 1),
     catchup=False,
-    tags=["ebury", "elt", "raw"],
+    tags=["ebury", "elt", "dbt"],
 ) as dag:
 
-    PythonOperator(
+    # ── Task 1: ingest ───────────────────────────────────────────────────────
+    t_load = PythonOperator(
         task_id="load_csv_to_raw",
         python_callable=load_csv_to_raw,
     )
+
+    # ── Task 2: dbt run ──────────────────────────────────────────────────────
+    t_dbt_run = BashOperator(
+        task_id="dbt_run",
+        bash_command=(
+            f"dbt run "
+            f"--project-dir {DBT_PROJECT_DIR} "
+            f"--profiles-dir {DBT_PROJECT_DIR} "
+            f"--no-use-colors"
+        ),
+        env={
+            "POSTGRES_HOST":     os.environ.get("POSTGRES_HOST", "postgres"),
+            "POSTGRES_PORT":     os.environ.get("POSTGRES_PORT", "5432"),
+            "POSTGRES_DB":       os.environ.get("POSTGRES_DB", "ebury_db"),
+            "POSTGRES_USER":     os.environ.get("POSTGRES_USER", "ebury_admin"),
+            "POSTGRES_PASSWORD": os.environ.get("POSTGRES_PASSWORD", ""),
+            "PATH": "/home/airflow/.local/bin:/usr/local/bin:/usr/bin:/bin",
+        },
+        append_env=True,
+    )
+
+    # ── Task 3: dbt test ─────────────────────────────────────────────────────
+    t_dbt_test = BashOperator(
+        task_id="dbt_test",
+        bash_command=(
+            f"dbt test "
+            f"--project-dir {DBT_PROJECT_DIR} "
+            f"--profiles-dir {DBT_PROJECT_DIR} "
+            f"--no-use-colors"
+        ),
+        env={
+            "POSTGRES_HOST":     os.environ.get("POSTGRES_HOST", "postgres"),
+            "POSTGRES_PORT":     os.environ.get("POSTGRES_PORT", "5432"),
+            "POSTGRES_DB":       os.environ.get("POSTGRES_DB", "ebury_db"),
+            "POSTGRES_USER":     os.environ.get("POSTGRES_USER", "ebury_admin"),
+            "POSTGRES_PASSWORD": os.environ.get("POSTGRES_PASSWORD", ""),
+            "PATH": "/home/airflow/.local/bin:/usr/local/bin:/usr/bin:/bin",
+        },
+        append_env=True,
+    )
+
+    # ── Dependencies ─────────────────────────────────────────────────────────
+    t_load >> t_dbt_run >> t_dbt_test

@@ -17,6 +17,8 @@ x-airflow-common:
     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     # Python path
     PYTHONPATH: /opt/airflow
+    # Install dbt-postgres inside Airflow containers at startup
+    _PIP_ADDITIONAL_REQUIREMENTS: "dbt-postgres==1.7.19"
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
