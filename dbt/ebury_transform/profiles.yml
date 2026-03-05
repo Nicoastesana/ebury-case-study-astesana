@@ -1,14 +1,12 @@
 ebury_transform:
+  target: dev
   outputs:
     dev:
       type: postgres
-      host: postgres
-      port: 5432
-      user: airflow
-      password: airflow
-      dbname: ebury_dwh
-      schema: analytics
+      host: "{{ env_var('POSTGRES_HOST', 'localhost') }}"
+      port: "{{ env_var('POSTGRES_PORT', '5432') | int }}"
+      dbname: "{{ env_var('POSTGRES_DB', 'ebury_db') }}"
+      user: "{{ env_var('POSTGRES_USER', 'ebury_admin') }}"
+      password: "{{ env_var('POSTGRES_PASSWORD') }}"
+      schema: staging
       threads: 4
-      keepalives_idle: 0
-  target: dev
-

@@ -1,5 +1,5 @@
 name: 'ebury_transform'
-version: '1.0.0'
+version: '1.1.0'
 config-version: 2
 
 profile: 'ebury_transform'
@@ -19,9 +19,8 @@ clean-targets:
 models:
   ebury_transform:
     staging:
-      +materialized: view
       +schema: staging
+      +materialized: view
     analytics:
-      +materialized: table
       +schema: analytics
-
+      +materialized: table

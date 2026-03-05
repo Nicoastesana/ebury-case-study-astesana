@@ -2,39 +2,102 @@ version: 2
 
 models:
   - name: dim_customers
-    description: "Customer dimension table"
+    description: >
+      One row per customer. Derived from valid transactions only.
+      Contains activity summary and spend aggregates per customer.
     columns:
       - name: customer_id
-        description: "Unique customer identifier"
+        description: "Cleaned integer customer identifier"
         tests:
           - unique
           - not_null
+
       - name: first_transaction_date
-        description: "Date of first transaction"
-      - name: last_transaction_date
-        description: "Date of last transaction"
-      - name: total_transactions
-        description: "Total number of transactions"
+        description: "Date of the customer's earliest transaction"
         tests:
           - not_null
 
+      - name: last_transaction_date
+        description: "Date of the customer's most recent transaction"
+        tests:
+          - not_null
+
+      - name: total_transactions
+        description: "Count of distinct valid transactions for this customer"
+        tests:
+          - not_null
+
+      - name: total_gross_amount
+        description: "Sum of (price × quantity) across all valid transactions"
+
+      - name: total_tax_paid
+        description: "Sum of tax across all valid transactions"
+
+      - name: total_amount_incl_tax
+        description: "Sum of (gross_amount + tax) across all valid transactions"
+
+      - name: avg_unit_price
+        description: "Average unit price across all valid transactions"
+
+
   - name: fact_transactions
-    description: "Transaction fact table"
+    description: >
+      One row per valid, fully-resolved transaction.
+      Rows with non-numeric price, quantity, or tax are excluded.
+      All measures are cast and trustworthy.
     columns:
       - name: transaction_id
-        description: "Unique transaction identifier"
+        description: "Cleaned integer transaction identifier"
         tests:
           - unique
           - not_null
+
       - name: customer_id
-        description: "Customer identifier"
+        description: "Foreign key to dim_customers"
         tests:
           - not_null
           - relationships:
               to: ref('dim_customers')
               field: customer_id
-      - name: amount
-        description: "Transaction amount"
+
+      - name: product_id
+        description: "Cleaned integer product identifier"
         tests:
           - not_null
 
+      - name: product_name
+        description: "Product name as provided in the source"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Product A', 'Product B', 'Product C', 'Product D', 'Product E']
+
+      - name: transaction_date
+        description: "Normalised transaction date (YYYY-MM-DD)"
+        tests:
+          - not_null
+
+      - name: quantity
+        description: "Units purchased (integer)"
+        tests:
+          - not_null
+
+      - name: unit_price
+        description: "Price per unit (numeric)"
+        tests:
+          - not_null
+
+      - name: tax
+        description: "Tax amount for the transaction (numeric)"
+        tests:
+          - not_null
+
+      - name: gross_amount
+        description: "price × quantity (pre-tax)"
+        tests:
+          - not_null
+
+      - name: total_amount
+        description: "gross_amount + tax"
+        tests:
+          - not_null

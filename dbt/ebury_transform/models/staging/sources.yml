@@ -1,29 +1,28 @@
 version: 2
 
 sources:
-  - name: staging
-    description: "Staging area for raw ingested data"
-    database: ebury_dwh
-    schema: staging
+  - name: raw
+    schema: raw
+    description: "Raw landing zone — data loaded as-is from customer_transactions.csv"
     tables:
       - name: customer_transactions
-        description: "Raw customer transaction data from CSV"
+        description: "All rows from the source CSV, including dirty/incomplete records"
         columns:
           - name: transaction_id
-            description: "Unique transaction identifier"
-            tests:
-              - unique
-              - not_null
+            description: "Source transaction ID (may have 'T' prefix or be NULL)"
           - name: customer_id
-            description: "Customer identifier"
-            tests:
-              - not_null
+            description: "Source customer ID (stored as float string e.g. '501.0', may be NULL)"
           - name: transaction_date
-            description: "Date of the transaction"
-            tests:
-              - not_null
-          - name: amount
-            description: "Transaction amount"
-            tests:
-              - not_null
-
+            description: "Transaction date — mixed formats: YYYY-MM-DD and DD-MM-YYYY"
+          - name: product_id
+            description: "Product ID (may have 'P' prefix e.g. 'P100')"
+          - name: product_name
+            description: "Product name"
+          - name: quantity
+            description: "Units purchased (may be NULL or non-numeric)"
+          - name: price
+            description: "Unit price (may be non-numeric e.g. 'Two Hundred')"
+          - name: tax
+            description: "Tax amount (may be non-numeric e.g. 'Fifteen')"
+          - name: loaded_at
+            description: "Timestamp when the row was loaded into the raw layer"
