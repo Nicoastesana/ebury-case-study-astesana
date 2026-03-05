@@ -24,6 +24,10 @@ Full ELT pipeline orchestrated by Airflow:
 Dependencies:  load_csv_to_raw >> dbt_run >> dbt_test
 
 Retries: 2 attempts with 5-minute delay between them.
+
+Notifications: on_failure_callback logs a structured error message for every
+failed task (dag, task, run_id, exception, log URL). Extend notify_failure()
+to send Slack / email / PagerDuty alerts as needed.
 """
 
 from __future__ import annotations
@@ -40,6 +44,28 @@ from airflow.operators.python import PythonOperator
 log = logging.getLogger(__name__)
 
 CSV_PATH = "/opt/airflow/data/customer_transactions.csv"
+
+
+# ---------------------------------------------------------------------------
+# Notification callback — fired on any task failure
+# ---------------------------------------------------------------------------
+def notify_failure(context: dict) -> None:
+    """
+    Log a structured error message when a task fails.
+
+    Extend this function to send Slack/email alerts by replacing the
+    log.error call with your preferred notification library.
+    """
+    dag_id   = context["dag"].dag_id
+    task_id  = context["task_instance"].task_id
+    run_id   = context["run_id"]
+    log_url  = context["task_instance"].log_url
+    exception = context.get("exception", "n/a")
+
+    log.error(
+        "TASK FAILED | dag=%s | task=%s | run_id=%s | exception=%s | logs=%s",
+        dag_id, task_id, run_id, exception, log_url,
+    )
 DBT_PROJECT_DIR = "/opt/airflow/dbt/ebury_transform"
 
 RAW_COLUMNS = (
@@ -60,8 +86,9 @@ default_args = {
     "owner": "ebury",
     "retries": 2,
     "retry_delay": timedelta(minutes=5),
-    "email_on_failure": False,   # set to True and configure SMTP for alerts
+    "email_on_failure": False,        # set to True and configure SMTP for alerts
     "email_on_retry": False,
+    "on_failure_callback": notify_failure,
 }
 
 
