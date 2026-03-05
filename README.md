@@ -1,40 +1,50 @@
-# Ebury Case Study - ELT Pipeline
+# Ebury Case Study — ELT Pipeline
 
-## Architecture Overview
+Containerized ELT platform for Ebury's Senior Data Engineer case study. Orchestrates ingestion of `customer_transactions.csv` into PostgreSQL using Apache Airflow, with dbt handling modular transformations into a star schema, aggregation models, and an auditing layer.
 
-This project implements a containerized ELT (Extract, Load, Transform) pipeline using:
-- **Apache Airflow**: Orchestration and workflow management
-- **dbt (data build tool)**: Data transformation and testing
-- **PostgreSQL**: Data warehouse
-- **Docker Compose**: Container orchestration
+## Architecture
+
+| Layer | Tool | Role |
+|---|---|---|
+| Orchestration | Apache Airflow | DAG scheduling and task execution |
+| Transformation | dbt | Modular SQL models, testing, lineage |
+| Warehouse | PostgreSQL | Staging, analytics, auditing schemas |
+| Infrastructure | Docker Compose | Containerised, reproducible environment |
 
 ## Project Structure
 
 ```
 ebury-case-study-astesana/
-├── dags/                           # Airflow DAGs
-│   └── ebury_elt_pipeline.py      # Main ELT pipeline DAG
-├── dbt/                            # dbt project
-│   └── ebury_transform/
-│       ├── dbt_project.yml        # dbt project configuration
-│       ├── profiles.yml           # Database connection profiles
-│       └── models/
-│           ├── staging/           # Staging models
-│           │   ├── sources.yml    # Source definitions
-│           │   └── stg_customer_transactions.sql
-│           └── analytics/         # Analytics models (star schema)
-│               ├── dim_customers.sql      # Customer dimension
-│               ├── fact_transactions.sql  # Transaction fact
-│               └── schema.yml             # Model tests
-├── data/                          # Source data
-│   └── customer_transactions.csv  # Sample transaction data
-├── init_db/                       # Database initialization scripts
-│   └── 01_init.sql               # Creates schemas and permissions
-├── logs/                          # Airflow logs (created at runtime)
-├── plugins/                       # Airflow plugins (if needed)
-├── docker-compose.yml            # Docker services configuration
-├── requirements.txt              # Python dependencies
-└── README.md                     # This file
+├── dags/
+│   └── ebury_elt_pipeline.py        # Main ELT DAG (ingest → dbt run → dbt test)
+├── dbt/ebury_transform/
+│   ├── dbt_project.yml
+│   ├── profiles.yml
+│   └── models/
+│       ├── staging/
+│       │   ├── sources.yml
+│       │   └── stg_customer_transactions.sql
+│       ├── analytics/               # Star schema
+│       │   ├── dim_customers.sql
+│       │   ├── fact_transactions.sql
+│       │   ├── agg_by_customer.sql
+│       │   ├── agg_by_product.sql
+│       │   ├── agg_by_customer_product.sql
+│       │   └── schema.yml
+│       └── auditing/                # Data quality error tracking
+│           ├── audit_errors_by_customer.sql
+│           └── audit_errors_by_load_date.sql
+├── docs/schema/                     # Star schema diagrams
+├── init_db/
+│   ├── 01_init.sql                  # Creates schemas and permissions
+│   └── 02_airflow_db.sql
+├── notebooks/
+│   └── eda_customer_transactions.ipynb
+├── data/                            # Source CSV (gitignored)
+├── logs/                            # Airflow logs (gitignored)
+├── plugins/                         # Airflow plugins
+├── docker-compose.yml
+└── requirements.txt
 ```
 
 ## Getting Started
@@ -46,174 +56,113 @@ ebury-case-study-astesana/
 
 ### Setup and Run
 
-1. **Start the services**:
-   ```powershell
+1. **Start all services**:
+   ```bash
    docker-compose up -d
    ```
 
-2. **Wait for initialization** (first-time setup takes 2-3 minutes):
-   ```powershell
+2. **Wait for initialisation** (~2–3 minutes on first run):
+   ```bash
    docker-compose logs -f airflow-init
    ```
-   Wait until you see "Database migrations complete" and user creation messages.
+   Wait until you see `Database migrations complete`.
 
-3. **Access Airflow UI**:
-   - URL: http://localhost:8080
-   - Username: `airflow`
-   - Password: `airflow`
+3. **Open Airflow UI**: [http://localhost:8080](http://localhost:8080)
+   - Username: `airflow` / Password: `airflow`
 
-4. **Configure PostgreSQL connection in Airflow**:
-   - Go to Admin > Connections
-   - Add a new connection:
-     - Connection Id: `ebury_dwh`
-     - Connection Type: `Postgres`
-     - Host: `postgres`
-     - Schema: `ebury_dwh`
-     - Login: `airflow`
-     - Password: `airflow`
-     - Port: `5432`
+4. **Configure the PostgreSQL connection** — go to **Admin → Connections** and add:
 
-5. **Enable and run the DAG**:
-   - In Airflow UI, find `ebury_elt_pipeline`
-   - Toggle it to "On"
-   - Click "Trigger DAG" to run manually
+   | Field | Value |
+   |---|---|
+   | Connection Id | `ebury_dwh` |
+   | Connection Type | `Postgres` |
+   | Host | `postgres` |
+   | Schema | `ebury_dwh` |
+   | Login / Password | `airflow` |
+   | Port | `5432` |
 
-### Pipeline Flow
-
-1. **Ingest**: Loads `customer_transactions.csv` into `staging.customer_transactions` table
-2. **Transform**: dbt runs transformations to create:
-   - `staging.stg_customer_transactions` (view)
-   - `analytics.dim_customers` (table)
-   - `analytics.fact_transactions` (table)
-3. **Test**: dbt runs data quality tests (uniqueness, not null, relationships)
+5. **Enable and trigger the DAG**: find `ebury_elt_pipeline`, toggle it **On**, then click **Trigger DAG**.
 
 ### Stopping the Services
 
-```powershell
-docker-compose down
+```bash
+docker-compose down          # stop containers
+docker-compose down -v       # stop and remove all volumes (fresh start)
 ```
 
-To remove all data and start fresh:
-```powershell
-docker-compose down -v
+## Pipeline Flow
+
+```
+customer_transactions.csv
+  → raw.customer_transactions          (Airflow: CSV ingest)
+  → staging.stg_customer_transactions  (dbt: cleaned view)
+  → analytics.dim_customers            (dbt: customer dimension)
+  → analytics.fact_transactions        (dbt: transaction fact table)
+  → analytics.agg_by_*                 (dbt: aggregation models)
+  → auditing.audit_errors_by_*         (dbt: data quality error tracking)
 ```
 
 ## Database Schema
 
+### Raw Layer
+- `raw.customer_transactions` — raw CSV data as ingested
+
 ### Staging Layer
-- `staging.customer_transactions`: Raw ingested data
+- `staging.stg_customer_transactions` — cleaned view with type casting and deduplication
 
 ### Analytics Layer (Star Schema)
-- `analytics.dim_customers`: Customer dimension with aggregated metrics
-- `analytics.fact_transactions`: Transaction fact table with foreign key to dim_customers
+- `analytics.dim_customers` — customer dimension with aggregated metrics
+- `analytics.fact_transactions` — transaction fact table with FK to `dim_customers`
+- `analytics.agg_by_customer` — transaction aggregates per customer
+- `analytics.agg_by_product` — transaction aggregates per product
+- `analytics.agg_by_customer_product` — cross-dimension aggregates
 
-## Testing
+### Auditing Layer
+- `auditing.audit_errors_by_customer` — data quality errors grouped by customer
+- `auditing.audit_errors_by_load_date` — data quality errors grouped by load date
 
-dbt tests include:
-- Data integrity checks (unique, not_null)
-- Referential integrity (foreign key relationships)
-- Custom business logic tests (can be added in `tests/` directory)
+See [docs/schema/](docs/schema/) for star schema diagrams.
 
-## Customization
+## Data Quality
 
-### Adding New Data Sources
-1. Add CSV files to `data/` directory
-2. Update DAG in `dags/ebury_elt_pipeline.py` to ingest new sources
-3. Define sources in dbt `models/staging/sources.yml`
-4. Create staging models in `models/staging/`
-
-### Adding Transformations
-1. Create new SQL files in `models/analytics/`
-2. Reference upstream models using `{{ ref('model_name') }}`
-3. Add tests in corresponding `schema.yml` files
-
-### Scheduling
-The DAG is configured to run daily (`schedule_interval='@daily'`). Modify this in `dags/ebury_elt_pipeline.py` as needed.
+dbt tests run automatically as the final DAG step and cover:
+- Uniqueness and not-null constraints on all key columns
+- Referential integrity between fact and dimension tables
+- Custom business logic validations
 
 ## Monitoring
 
-- **Airflow UI**: Task status, logs, and execution history
-- **PostgreSQL**: Connect directly to inspect tables:
-  ```powershell
-  docker exec -it ebury_postgres psql -U airflow -d ebury_dwh
+- **Airflow UI**: task status, logs, and execution history at [http://localhost:8080](http://localhost:8080)
+- **PostgreSQL direct access**:
+  ```bash
+  docker exec -it ebury_postgres psql -U pg_ebury_admin -d ebury_db
   ```
 
 ## Troubleshooting
 
-### Services not starting
-```powershell
+```bash
+# View all service logs
 docker-compose logs
-```
 
-### Check Airflow scheduler logs
-```powershell
+# Check scheduler specifically
 docker-compose logs airflow-scheduler
+
+# Full reset
+docker-compose down -v && docker-compose up -d
 ```
 
-### Reset everything
-```powershell
-docker-compose down -v
-docker-compose up -d
-```
+## Extending the Pipeline
 
-## Version Management
+### Adding a new data source
+1. Add the CSV to `data/`
+2. Update `dags/ebury_elt_pipeline.py` to ingest it
+3. Define it as a source in `dbt/ebury_transform/models/staging/sources.yml`
+4. Create a staging model in `models/staging/`
 
-This project uses **Semantic Versioning** (MAJOR.MINOR.PATCH).
+### Adding transformations
+1. Create a new SQL file in `models/analytics/` or `models/auditing/`
+2. Reference upstream models with `{{ ref('model_name') }}`
+3. Add tests to the relevant `schema.yml`
 
-### Current Version
-Check the `VERSION` file or see `CHANGELOG.md` for version history.
-
-### Bumping Versions
-
-#### Option 1: Automated Script (Recommended)
-
-```powershell
-# For bug fixes (1.0.0 → 1.0.1)
-.\scripts\bump-version.ps1 -Type patch -Message "Fix CSV ingestion timeout"
-
-# For new features (1.0.0 → 1.1.0)
-.\scripts\bump-version.ps1 -Type minor -Message "Add customer segmentation model"
-
-# For breaking changes (1.0.0 → 2.0.0)
-.\scripts\bump-version.ps1 -Type major -Message "Refactor database schema"
-```
-
-#### Option 2: Manual Update
-
-1. Edit `VERSION` file with new version number
-2. Add entry to `CHANGELOG.md`
-3. Commit:
-   ```powershell
-   git add VERSION CHANGELOG.md
-   git commit -m "[release] - Bump version to X.Y.Z"
-   ```
-4. Create git tag:
-   ```powershell
-   git tag -a vX.Y.Z -m "Release version X.Y.Z"
-   ```
-
-### What the Script Does
-
-The `bump-version.ps1` script automatically:
-- ✅ Updates `VERSION` file
-- ✅ Updates `CHANGELOG.md` with new entry and date
-- ✅ Updates version reference in `docker-compose.yml`
-- ✅ Creates git commit with proper message
-- ✅ Creates annotated git tag for release tracking
-
-### Publishing a Release
-
-After bumping version:
-
-```powershell
-git push
-git push --tags
-```
-
-## Next Steps
-
-- Add more complex transformations (aggregations, window functions)
-- Implement incremental models in dbt
-- Add data quality monitoring and alerting
-- Implement CI/CD pipeline for automated testing
-- Add more comprehensive business metrics and KPIs
+### Changing the schedule
+The DAG runs daily by default (`schedule_interval='@daily'`). Edit `dags/ebury_elt_pipeline.py` to change it.

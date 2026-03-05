@@ -251,3 +251,15 @@ Thumbs.db
 # AI assistant context (local only)
 .ai/
 
+# Local troubleshooting / diagnostic scripts (may contain credentials)
+SOLUTION_POSTGRES.md
+TROUBLESHOOTING.md
+scripts/diagnose-postgres.ps1
+
+# dbt user config (local only)
+dbt/**/.user.yml
+
+# IDE
+.idea/
+.claude/
+
