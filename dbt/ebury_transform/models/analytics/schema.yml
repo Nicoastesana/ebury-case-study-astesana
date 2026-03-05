@@ -101,3 +101,31 @@ models:
         description: "gross_amount + tax"
         tests:
           - not_null
+
+  - name: agg_by_customer
+    description: "One row per customer — full activity and spend summary including product array"
+    columns:
+      - name: customer_id
+        tests: [unique, not_null]
+      - name: total_transactions
+        tests: [not_null]
+      - name: total_paid
+        tests: [not_null]
+
+  - name: agg_by_customer_product
+    description: "One row per customer-product pair — purchase pattern per combination"
+    columns:
+      - name: customer_id
+        tests: [not_null]
+      - name: product_id
+        tests: [not_null]
+      - name: total_paid
+        tests: [not_null]
+
+  - name: agg_by_product
+    description: "One row per product — revenue and customer reach summary"
+    columns:
+      - name: product_id
+        tests: [unique, not_null]
+      - name: total_paid
+        tests: [not_null]

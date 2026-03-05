@@ -24,3 +24,6 @@ models:
     analytics:
       +schema: analytics
       +materialized: table
+    auditing:
+      +schema: auditing
+      +materialized: table
