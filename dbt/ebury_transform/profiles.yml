@@ -8,5 +8,5 @@ ebury_transform:
       dbname: "{{ env_var('POSTGRES_DB', 'ebury_db') }}"
       user: "{{ env_var('POSTGRES_USER', 'ebury_admin') }}"
       password: "{{ env_var('POSTGRES_PASSWORD') }}"
-      schema: staging
+      schema: public
       threads: 4
