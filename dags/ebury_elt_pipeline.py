@@ -19,7 +19,7 @@ Full ELT pipeline orchestrated by Airflow:
 
   Task 3 — dbt_test
     Runs all dbt schema tests (unique, not_null, relationships,
-    accepted_values) against the materialised models.
+    accepted_values) against the materialized models.
 
 Dependencies:  load_csv_to_raw >> dbt_run >> dbt_test
 
@@ -32,52 +32,16 @@ to send Slack / email / PagerDuty alerts as needed.
 
 from __future__ import annotations
 
-import logging
 import os
 from datetime import datetime, timedelta
 
-import psycopg2
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
+from pipeline_tasks.landing import load_csv_to_raw
+from pipeline_tasks.notifications import notify_failure
 
-log = logging.getLogger(__name__)
-
-CSV_PATH = "/opt/airflow/data/customer_transactions.csv"
-
-
-# ---------------------------------------------------------------------------
-# Notification callback — fired on any task failure
-# ---------------------------------------------------------------------------
-def notify_failure(context: dict) -> None:
-    """
-    Log a structured error message when a task fails.
-
-    Extend this function to send Slack/email alerts by replacing the
-    log.error call with your preferred notification library.
-    """
-    dag_id   = context["dag"].dag_id
-    task_id  = context["task_instance"].task_id
-    run_id   = context["run_id"]
-    log_url  = context["task_instance"].log_url
-    exception = context.get("exception", "n/a")
-
-    log.error(
-        "TASK FAILED | dag=%s | task=%s | run_id=%s | exception=%s | logs=%s",
-        dag_id, task_id, run_id, exception, log_url,
-    )
 DBT_PROJECT_DIR = "/opt/airflow/dbt/ebury_transform"
-
-RAW_COLUMNS = (
-    "transaction_id",
-    "customer_id",
-    "transaction_date",
-    "product_id",
-    "product_name",
-    "quantity",
-    "price",
-    "tax",
-)
 
 # ---------------------------------------------------------------------------
 # Default args — applied to every task
@@ -90,72 +54,6 @@ default_args = {
     "email_on_retry": False,
     "on_failure_callback": notify_failure,
 }
-
-
-# ---------------------------------------------------------------------------
-# Task 1: load CSV → raw.customer_transactions
-# ---------------------------------------------------------------------------
-def load_csv_to_raw(**_context) -> None:
-    """
-    Stream the CSV into PostgreSQL via COPY FROM STDIN.
-
-    Pattern
-    -------
-    1. CREATE TEMP TABLE (no constraints)  → safe for COPY
-    2. COPY FROM STDIN                     → O(1) memory, maximum speed
-    3. INSERT INTO raw ON CONFLICT DO NOTHING → idempotent
-    """
-    conn = psycopg2.connect(
-        host=os.environ["POSTGRES_HOST"],
-        port=int(os.environ.get("POSTGRES_PORT", 5432)),
-        dbname=os.environ["POSTGRES_DB"],
-        user=os.environ["POSTGRES_USER"],
-        password=os.environ["POSTGRES_PASSWORD"],
-    )
-    try:
-        with conn:
-            with conn.cursor() as cur:
-
-                cur.execute("""
-                    CREATE TEMP TABLE tmp_customer_transactions (
-                        transaction_id   VARCHAR(50),
-                        customer_id      VARCHAR(50),
-                        transaction_date VARCHAR(50),
-                        product_id       VARCHAR(50),
-                        product_name     VARCHAR(100),
-                        quantity         VARCHAR(50),
-                        price            VARCHAR(50),
-                        tax              VARCHAR(50)
-                    ) ON COMMIT DROP
-                """)
-
-                columns = ", ".join(RAW_COLUMNS)
-                copy_sql = f"""
-                    COPY tmp_customer_transactions ({columns})
-                    FROM STDIN
-                    WITH (FORMAT csv, HEADER true, NULL '')
-                """
-                with open(CSV_PATH, "r", encoding="utf-8") as fh:
-                    cur.copy_expert(copy_sql, fh)
-
-                cur.execute("SELECT COUNT(*) FROM tmp_customer_transactions")
-                total = cur.fetchone()[0]
-                log.info("COPY loaded %d rows into temp table", total)
-
-                cur.execute(f"""
-                    INSERT INTO raw.customer_transactions ({columns})
-                    SELECT {columns} FROM tmp_customer_transactions
-                    ON CONFLICT (transaction_id)
-                    WHERE transaction_id IS NOT NULL
-                    DO NOTHING
-                """)
-                log.info(
-                    "Inserted %d rows into raw.customer_transactions "
-                    "(%d skipped as duplicates)",
-                    cur.rowcount, total - cur.rowcount,
-                )
-    finally:
-        conn.close()
 
 
 # ---------------------------------------------------------------------------
